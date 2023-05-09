@@ -11,19 +11,18 @@ import delegator
 
 def dns_bruteforce(obj, domain):
     data = obj.data_stream.read()
-    wf = open('/tmp/wordlist','w')
-
-    # write wordlist to file
-    for line in data.splitlines():
-        wf.write(line.decode("UTF-8")+'\n')
+    with open('/tmp/wordlist','wb') as wf:
+        wf.write(data)
 
     # puredns command
-    cmd = '/go/bin/puredns bruteforce /tmp/wordlist ' + domain + ' --resolvers /function/resolvers.txt -t 200'
+    # cmd = '/go/bin/puredns bruteforce /tmp/wordlist ' + domain + ' --resolvers /function/resolvers.txt -t 200 </dev/null'
+    cmd = 'sh -c \'/go/bin/puredns bruteforce /tmp/wordlist '+domain+' --resolvers /function/resolvers.txt -t 200 < /dev/null\''
 
     try:
         results = delegator.run(cmd, timeout=-1)
     except:
         print("Error in running the command:"+ cmd)
+
     return results.out
 
 
@@ -33,6 +32,7 @@ if __name__ == '__main__':
     parser.add_argument('-d', '--domain', dest='domain', required=True)
     parser.add_argument('-w', '--wordlist', dest='wordlist', required=True, help="Path to local wordlist file")
     parser.add_argument('-o', '--output', dest='output', required=False, help="Write output to a file") 
+    parser.add_argument('-f', '--force', dest='force', required=False, help="Force override of uploaded wordlist wordlist") 
     # parser.add_argument('-b','--bucket',dest='bucket', required=True)
     # parser.add_argument('-k','--key',dest='key', required=False, help='Name of the wordlist stored in the bucket')
 
@@ -47,7 +47,7 @@ if __name__ == '__main__':
     storage = Storage()
     bucket_files = storage.list_keys(bucket=BUCKET_NAME)
 
-    if obj_key in bucket_files:
+    if obj_key in bucket_files and not args.force:
         sys.stderr.write(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S,%f")[:-3] + " [INFO] File with same name already exists in the bucket, skipping upload\n")
     else:
         if os.path.exists(wordlist_file):
@@ -70,8 +70,9 @@ if __name__ == '__main__':
         fexec = FunctionExecutor(runtime=config.LITHOPS_RUNTIME) # change runtime
         fexec.map(dns_bruteforce,iterdata, obj_chunk_size=object_chunksize, extra_args={domain})
         output = fexec.get_result()
-    except:
+    except Exception as e:
         sys.stderr.write(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S,%f")[:-3] + " [ERROR] Could not execute the runtime.\n")
+        print(e)
         exit()
 
     for line in output:

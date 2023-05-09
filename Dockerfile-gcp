@@ -1,0 +1,110 @@
+# Define custom function directory
+ARG FUNCTION_DIR="/function"
+
+FROM python:3.10-buster as build-image
+
+# Include global arg in this stage of the build
+ARG FUNCTION_DIR
+
+# Install aws-cloudrun-cpp build dependencies
+RUN apt-get update && \
+  apt-get install -y \
+  # g++ \
+  make \
+  # cmake \
+  unzip \
+  git \
+  libcurl4-openssl-dev \
+  curl
+
+# Copy function code
+RUN mkdir -p ${FUNCTION_DIR}
+
+# Update pip
+RUN pip install -U pip wheel six setuptools
+
+# Install the function's dependencies
+RUN pip install \
+    --target ${FUNCTION_DIR} \
+        wheel \
+        gunicorn \
+        pika \
+        flask \
+        gevent \
+        redis \
+        requests \
+        PyYAML \
+        kubernetes \
+        numpy \
+        cloudpickle \
+        ps-mem \
+        tblib \
+        cryptography \
+        httplib2 \
+        google-cloud-storage \
+        google-api-python-client \
+        gcsfs \
+        google-auth
+
+
+FROM python:3.10-buster
+
+# Include global arg in this stage of the build
+ARG FUNCTION_DIR
+# Set working directory to function root directory
+WORKDIR ${FUNCTION_DIR}
+
+# Copy in the built dependencies
+COPY --from=build-image ${FUNCTION_DIR} ${FUNCTION_DIR}
+
+# Add Lithops
+COPY lithops_cloudrun.zip ${FUNCTION_DIR}
+RUN unzip lithops_cloudrun.zip \
+    && rm lithops_cloudrun.zip
+
+# Put your dependencies/tools here, using RUN pip install... or RUN apt install...
+
+
+# install go
+RUN wget https://dl.google.com/go/go1.19.5.linux-amd64.tar.gz
+RUN tar -xvf go1.19.5.linux-amd64.tar.gz
+RUN rm go1.19.5.linux-amd64.tar.gz
+RUN mv go /usr/local
+
+# ENV for Go
+ENV GOROOT="/usr/local/go"
+ENV PATH="${PATH}:${GOROOT}/bin"
+ENV PATH="${PATH}:${GOPATH}/bin"
+ENV GOPATH=$HOME/go
+
+RUN go install github.com/d3mondev/puredns/v2@latest
+
+RUN go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest
+
+RUN go install github.com/hahwul/dalfox/v2@latest
+
+RUN go install -v github.com/projectdiscovery/nuclei/v2/cmd/nuclei@latest
+
+RUN go install -v github.com/ffuf/ffuf@latest
+
+RUN go install -v github.com/tomnomnom/fff@latest
+
+RUN git clone https://github.com/projectdiscovery/nuclei-templates.git /nuclei-templates
+
+RUN git clone https://github.com/0xjbb/static-nmap.git /static-nmap && chmod +x /static-nmap/nmap
+
+RUN git clone https://github.com/robertdavidgraham/masscan /masscan && cd /masscan && make 
+
+# RUN curl -LO https://github.com/assetnote/kiterunner/releases/download/v1.0.2/kiterunner_1.0.2_linux_amd64.tar.gz && tar xvf kiterunner_1.0.2_linux_amd64.tar.gz 
+
+RUN  curl -o /function/resolvers.txt -LO https://raw.githubusercontent.com/janmasarik/resolvers/master/resolvers.txt
+
+COPY ./bin/massdns /usr/local/bin/massdns
+
+RUN cp bin/gunicorn gc
+# install massdns
+# RUN git clone https://github.com/blechschmidt/massdns.git
+# RUN cd massdns && make && cp bin/massdns /usr/local/bin/massdns
+
+
+CMD exec ./gc --timeout 600 --bind :$PORT lithopsproxy:proxy

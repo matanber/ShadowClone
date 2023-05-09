@@ -101,7 +101,8 @@ def execute_command(obj, command, nosplit):
 
     #go into this only when a nosplit file is provided
     if nosplit: 
-        # print(nosplit)
+        # print(nosplit)\
+
         s3 = boto3.client('s3')
         bucket_name = nosplit.split('/')[0]
         # print(bucket_name)
@@ -115,7 +116,7 @@ def execute_command(obj, command, nosplit):
         command = command.replace('{NOSPLIT}',file_name)
 
     try:
-        results = run(command)
+        results = run(command, warn=True)
     except Exception as e:
         print("Error in running the command:"+ command)
         return str(e)
